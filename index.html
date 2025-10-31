@@ -1,0 +1,3362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagram Studio - Org Charts & Process Flows</title>
+<!--
+HOW TO RUN:
+1. Save this file as index.html
+2. Double-click to open in Chrome, Edge, or Firefox
+3. Everything works offline - no internet required
+4. Your work auto-saves to browser LocalStorage
+
+FEATURES:
+- Org charts with auto-layout
+- Process flow diagrams with swimlanes
+- Drag, resize, connect nodes
+- Undo/Redo (Ctrl/Cmd+Z)
+- Export PNG/SVG
+- Save reusable assets
+- Mini-map navigation
+- Keyboard shortcuts
+
+SHORTCUTS:
+Space+Drag: Pan canvas
+Ctrl/Cmd+Wheel: Zoom
+Ctrl/Cmd+Z: Undo
+Ctrl/Cmd+Shift+Z: Redo
+Del/Backspace: Delete
+Ctrl/Cmd+D: Duplicate
+Ctrl/Cmd+A: Select all
+Ctrl/Cmd+G: Group
+Arrow keys: Nudge selection
+-->
+<style>
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-primary: #f5f5f7;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e8e8ed;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --border-color: #d2d2d7;
+  --accent-blue: #0071e3;
+  --accent-hover: #0077ed;
+  --shadow: 0 2px 8px rgba(0,0,0,0.1);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.15);
+  --grid-color: #e0e0e0;
+  --sidebar-width: 240px;
+  --toolbar-height: 52px;
+  --inspector-width: 280px;
+}
+
+body.high-contrast {
+  --bg-primary: #000000;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --border-color: #444444;
+  --grid-color: #333333;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+  height: 100vh;
+  user-select: none;
+}
+
+#app {
+  display: grid;
+  grid-template-areas:
+    "toolbar toolbar toolbar"
+    "sidebar canvas inspector";
+  grid-template-columns: var(--sidebar-width) 1fr var(--inspector-width);
+  grid-template-rows: var(--toolbar-height) 1fr;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Toolbar */
+#toolbar {
+  grid-area: toolbar;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 8px;
+  box-shadow: var(--shadow);
+  z-index: 100;
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 0 8px;
+  border-right: 1px solid var(--border-color);
+}
+
+.toolbar-group:last-child {
+  border-right: none;
+  margin-left: auto;
+}
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: var(--bg-tertiary);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn.primary {
+  background: var(--accent-blue);
+  color: white;
+  border-color: var(--accent-blue);
+}
+
+.btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+/* Sidebar */
+#sidebar {
+  grid-area: sidebar;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.sidebar-tab.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--accent-blue);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.shape-category {
+  margin-bottom: 24px;
+}
+
+.shape-category h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+.shape-item {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: move;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shape-item:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.shape-preview {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.shape-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.shape-name {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.shape-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Canvas */
+#canvas-container {
+  grid-area: canvas;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+#canvas {
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+#canvas.panning {
+  cursor: grabbing;
+}
+
+#canvas.drawing-connector {
+  cursor: crosshair;
+}
+
+.selection-box {
+  fill: rgba(0, 113, 227, 0.1);
+  stroke: var(--accent-blue);
+  stroke-width: 1;
+  stroke-dasharray: 4 2;
+  pointer-events: none;
+}
+
+.node {
+  cursor: move;
+}
+
+.node.selected {
+  filter: drop-shadow(0 0 4px rgba(0, 113, 227, 0.6));
+}
+
+.node.locked {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.resize-handle {
+  fill: white;
+  stroke: var(--accent-blue);
+  stroke-width: 1.5;
+  cursor: nwse-resize;
+}
+
+.resize-handle.e, .resize-handle.w {
+  cursor: ew-resize;
+}
+
+.resize-handle.n, .resize-handle.s {
+  cursor: ns-resize;
+}
+
+.resize-handle.ne, .resize-handle.sw {
+  cursor: nesw-resize;
+}
+
+.edge {
+  fill: none;
+  stroke: #666;
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.edge.selected {
+  stroke: var(--accent-blue);
+  stroke-width: 3;
+}
+
+.edge-handle {
+  fill: white;
+  stroke: var(--accent-blue);
+  stroke-width: 1.5;
+  cursor: move;
+}
+
+.arrowhead {
+  fill: #666;
+}
+
+.edge.selected .arrowhead {
+  fill: var(--accent-blue);
+}
+
+/* Inspector */
+#inspector {
+  grid-area: inspector;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+#inspector h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.inspector-section {
+  margin-bottom: 24px;
+}
+
+.inspector-section h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.color-picker-group {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.color-picker-group input[type="color"] {
+  width: 48px;
+  height: 32px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.color-picker-group input[type="text"] {
+  flex: 1;
+}
+
+/* Mini-map */
+#minimap {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 200px;
+  height: 150px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  z-index: 50;
+}
+
+#minimap svg {
+  width: 100%;
+  height: 100%;
+}
+
+.minimap-viewport {
+  fill: rgba(0, 113, 227, 0.2);
+  stroke: var(--accent-blue);
+  stroke-width: 2;
+  cursor: move;
+}
+
+/* Context Menu */
+#context-menu {
+  position: fixed;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 1000;
+  min-width: 180px;
+  display: none;
+}
+
+#context-menu.visible {
+  display: block;
+}
+
+.context-menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.context-menu-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
+
+.context-menu-shortcut {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-left: 16px;
+}
+
+/* Modal */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal.visible {
+  display: flex;
+}
+
+.modal-content {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-content h2 {
+  font-size: 20px;
+  margin-bottom: 16px;
+}
+
+.modal-content .btn-group {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+/* Toast */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-primary);
+  color: var(--bg-secondary);
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  box-shadow: var(--shadow-lg);
+  z-index: 3000;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+#toast.visible {
+  opacity: 1;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Text editing */
+.text-editor {
+  position: absolute;
+  z-index: 100;
+  background: white;
+  border: 2px solid var(--accent-blue);
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  border-radius: 4px;
+  min-width: 100px;
+}
+
+/* Asset item */
+.asset-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.asset-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.asset-preview {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.asset-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.asset-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.asset-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.asset-actions button {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+/* Loading state */
+.loading {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-secondary);
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  z-index: 4000;
+}
+
+.loading.visible {
+  display: block;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <div class="toolbar-group">
+      <button class="btn" id="btn-undo" title="Undo (Ctrl/Cmd+Z)" disabled>↶ Undo</button>
+      <button class="btn" id="btn-redo" title="Redo (Ctrl/Cmd+Shift+Z)" disabled>↷ Redo</button>
+    </div>
+    
+    <div class="toolbar-group">
+      <button class="btn" id="btn-select" class="active" title="Select">Select</button>
+      <button class="btn" id="btn-connector" title="Draw Connector">Connect</button>
+    </div>
+    
+    <div class="toolbar-group">
+      <button class="btn" id="btn-delete" title="Delete (Del)" disabled>Delete</button>
+      <button class="btn" id="btn-duplicate" title="Duplicate (Ctrl/Cmd+D)" disabled>Duplicate</button>
+    </div>
+    
+    <div class="toolbar-group">
+      <button class="btn" id="btn-group" title="Group (Ctrl/Cmd+G)" disabled>Group</button>
+      <button class="btn" id="btn-ungroup" title="Ungroup (Shift+Ctrl/Cmd+G)" disabled>Ungroup</button>
+      <button class="btn" id="btn-lock" title="Lock/Unlock" disabled>Lock</button>
+    </div>
+    
+    <div class="toolbar-group">
+      <button class="btn" id="btn-front" title="Bring to Front" disabled>Front</button>
+      <button class="btn" id="btn-back" title="Send to Back" disabled>Back</button>
+    </div>
+    
+    <div class="toolbar-group">
+      <button class="btn" id="btn-tidy-tree" title="Auto-layout Org Chart">Tidy Tree</button>
+      <button class="btn" id="btn-grid" class="active" title="Toggle Grid">Grid</button>
+      <button class="btn" id="btn-snap" class="active" title="Toggle Snap">Snap</button>
+    </div>
+    
+    <div class="toolbar-group">
+      <button class="btn" id="btn-contrast" title="Toggle High Contrast">Contrast</button>
+    </div>
+    
+    <div class="toolbar-group">
+      <button class="btn" id="btn-export-png" title="Export as PNG">PNG</button>
+      <button class="btn" id="btn-export-svg" title="Export as SVG">SVG</button>
+      <button class="btn" id="btn-save-json" title="Save JSON">Save</button>
+      <button class="btn" id="btn-load-json" title="Load JSON">Load</button>
+      <button class="btn" id="btn-new" title="New Diagram">New</button>
+    </div>
+  </div>
+  
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-tabs">
+      <button class="sidebar-tab active" data-tab="org">Org</button>
+      <button class="sidebar-tab" data-tab="process">Process</button>
+      <button class="sidebar-tab" data-tab="saved">Saved</button>
+    </div>
+    
+    <div class="sidebar-content" id="sidebar-content">
+      <!-- Content populated by JS -->
+    </div>
+  </div>
+  
+  <!-- Canvas -->
+  <div id="canvas-container">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+          <polygon points="0 0, 10 3, 0 6" class="arrowhead" />
+        </marker>
+        <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+          <path d="M 16 0 L 0 0 0 16" fill="none" stroke="var(--grid-color)" stroke-width="0.5"/>
+        </pattern>
+      </defs>
+      <g id="grid-layer">
+        <rect width="10000" height="10000" x="-5000" y="-5000" fill="url(#grid)" />
+      </g>
+      <g id="edges-layer"></g>
+      <g id="nodes-layer"></g>
+      <g id="selection-layer"></g>
+    </svg>
+    
+    <!-- Mini-map -->
+    <div id="minimap">
+      <svg id="minimap-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 150">
+        <rect width="200" height="150" fill="var(--bg-primary)" />
+        <g id="minimap-content"></g>
+        <rect class="minimap-viewport" x="0" y="0" width="50" height="50" />
+      </svg>
+    </div>
+  </div>
+  
+  <!-- Inspector -->
+  <div id="inspector">
+    <h2>Properties</h2>
+    <div id="inspector-content">
+      <p style="color: var(--text-secondary); font-size: 13px;">Select an object to edit its properties</p>
+    </div>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div id="context-menu">
+  <div class="context-menu-item" data-action="duplicate">
+    <span>Duplicate</span>
+    <span class="context-menu-shortcut">Ctrl+D</span>
+  </div>
+  <div class="context-menu-item" data-action="delete">
+    <span>Delete</span>
+    <span class="context-menu-shortcut">Del</span>
+  </div>
+  <div class="context-menu-divider"></div>
+  <div class="context-menu-item" data-action="lock">
+    <span>Lock/Unlock</span>
+  </div>
+  <div class="context-menu-item" data-action="group">
+    <span>Group</span>
+    <span class="context-menu-shortcut">Ctrl+G</span>
+  </div>
+  <div class="context-menu-divider"></div>
+  <div class="context-menu-item" data-action="front">
+    <span>Bring to Front</span>
+  </div>
+  <div class="context-menu-item" data-action="back">
+    <span>Send to Back</span>
+  </div>
+  <div class="context-menu-divider"></div>
+  <div class="context-menu-item" data-action="save-asset">
+    <span>Save as Asset</span>
+  </div>
+  <div class="context-menu-item" data-action="add-report">
+    <span>Add Direct Report</span>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Modals will be created dynamically -->
+
+<!-- Hidden file input -->
+<input type="file" id="file-input" accept=".json" style="display: none;">
+
+<script>
+// ============================================================================
+// DATA MODEL & STATE
+// ============================================================================
+
+const APP_VERSION = 1;
+const AUTOSAVE_KEY = 'diagram.autosave.v1';
+const ASSETS_KEY = 'diagram.assets.v1';
+const GRID_SIZE = 16;
+
+let state = {
+  version: APP_VERSION,
+  page: {
+    grid: GRID_SIZE,
+    snap: true,
+    showGrid: true
+  },
+  nodes: [],
+  edges: [],
+  assets: [],
+  selection: [],
+  viewport: {
+    x: 0,
+    y: 0,
+    scale: 1
+  },
+  tool: 'select', // 'select' or 'connector'
+  history: [],
+  historyIndex: -1,
+  nextId: 1
+};
+
+let dragState = null;
+let connectorDrawing = null;
+let textEditor = null;
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+function generateId(prefix = 'n') {
+  return `${prefix}_${state.nextId++}`;
+}
+
+function snapToGrid(value) {
+  if (!state.page.snap) return value;
+  return Math.round(value / state.page.grid) * state.page.grid;
+}
+
+function screenToCanvas(screenX, screenY) {
+  const canvas = document.getElementById('canvas');
+  const rect = canvas.getBoundingClientRect();
+  const x = (screenX - rect.left - state.viewport.x) / state.viewport.scale;
+  const y = (screenY - rect.top - state.viewport.y) / state.viewport.scale;
+  return { x, y };
+}
+
+function canvasToScreen(canvasX, canvasY) {
+  const x = canvasX * state.viewport.scale + state.viewport.x;
+  const y = canvasY * state.viewport.scale + state.viewport.y;
+  return { x, y };
+}
+
+function getBounds(nodes) {
+  if (nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  
+  nodes.forEach(node => {
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x + node.w);
+    maxY = Math.max(maxY, node.y + node.h);
+  });
+  
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY
+  };
+}
+
+function showToast(message, duration = 2000) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('visible');
+  
+  setTimeout(() => {
+    toast.classList.remove('visible');
+  }, duration);
+}
+
+// ============================================================================
+// HISTORY / UNDO-REDO
+// ============================================================================
+
+function saveHistory() {
+  // Remove any history after current index
+  state.history = state.history.slice(0, state.historyIndex + 1);
+  
+  // Add current state
+  const snapshot = {
+    nodes: JSON.parse(JSON.stringify(state.nodes)),
+    edges: JSON.parse(JSON.stringify(state.edges)),
+    selection: [...state.selection]
+  };
+  
+  state.history.push(snapshot);
+  
+  // Limit history size
+  if (state.history.length > 100) {
+    state.history.shift();
+  } else {
+    state.historyIndex++;
+  }
+  
+  updateUndoRedoButtons();
+}
+
+function undo() {
+  if (state.historyIndex > 0) {
+    state.historyIndex--;
+    const snapshot = state.history[state.historyIndex];
+    state.nodes = JSON.parse(JSON.stringify(snapshot.nodes));
+    state.edges = JSON.parse(JSON.stringify(snapshot.edges));
+    state.selection = [...snapshot.selection];
+    
+    render();
+    updateInspector();
+    updateUndoRedoButtons();
+    showToast('Undo');
+  }
+}
+
+function redo() {
+  if (state.historyIndex < state.history.length - 1) {
+    state.historyIndex++;
+    const snapshot = state.history[state.historyIndex];
+    state.nodes = JSON.parse(JSON.stringify(snapshot.nodes));
+    state.edges = JSON.parse(JSON.stringify(snapshot.edges));
+    state.selection = [...snapshot.selection];
+    
+    render();
+    updateInspector();
+    updateUndoRedoButtons();
+    showToast('Redo');
+  }
+}
+
+function updateUndoRedoButtons() {
+  document.getElementById('btn-undo').disabled = state.historyIndex <= 0;
+  document.getElementById('btn-redo').disabled = state.historyIndex >= state.history.length - 1;
+}
+
+// ============================================================================
+// NODE TEMPLATES
+// ============================================================================
+
+const NODE_TEMPLATES = {
+  org: {
+    executive: {
+      name: 'Executive',
+      desc: 'C-Level, VP',
+      w: 180,
+      h: 100,
+      style: {
+        fill: '#1e40af',
+        stroke: '#1e3a8a',
+        strokeWidth: 2,
+        textColor: '#ffffff'
+      },
+      fields: {
+        role: 'Executive',
+        name: 'Name',
+        dept: 'Department'
+      }
+    },
+    manager: {
+      name: 'Manager',
+      desc: 'Team Lead, Director',
+      w: 160,
+      h: 90,
+      style: {
+        fill: '#3b82f6',
+        stroke: '#2563eb',
+        strokeWidth: 2,
+        textColor: '#ffffff'
+      },
+      fields: {
+        role: 'Manager',
+        name: 'Name',
+        dept: 'Team'
+      }
+    },
+    ic: {
+      name: 'Individual Contributor',
+      desc: 'Engineer, Designer, etc',
+      w: 140,
+      h: 70,
+      style: {
+        fill: '#60a5fa',
+        stroke: '#3b82f6',
+        strokeWidth: 2,
+        textColor: '#000000'
+      },
+      fields: {
+        role: 'IC',
+        name: 'Name',
+        dept: 'Team'
+      }
+    }
+  },
+  process: {
+    start: {
+      name: 'Start/End',
+      desc: 'Terminal',
+      w: 120,
+      h: 60,
+      style: {
+        fill: '#22c55e',
+        stroke: '#16a34a',
+        strokeWidth: 2,
+        textColor: '#000000'
+      },
+      shape: 'rounded',
+      fields: {
+        label: 'Start'
+      }
+    },
+    process: {
+      name: 'Process',
+      desc: 'Action or Step',
+      w: 140,
+      h: 70,
+      style: {
+        fill: '#3b82f6',
+        stroke: '#2563eb',
+        strokeWidth: 2,
+        textColor: '#ffffff'
+      },
+      shape: 'rectangle',
+      fields: {
+        label: 'Process'
+      }
+    },
+    decision: {
+      name: 'Decision',
+      desc: 'Branch Point',
+      w: 120,
+      h: 120,
+      style: {
+        fill: '#f59e0b',
+        stroke: '#d97706',
+        strokeWidth: 2,
+        textColor: '#000000'
+      },
+      shape: 'diamond',
+      fields: {
+        label: 'Decision?'
+      }
+    },
+    data: {
+      name: 'Data/Input',
+      desc: 'Input or Output',
+      w: 140,
+      h: 70,
+      style: {
+        fill: '#8b5cf6',
+        stroke: '#7c3aed',
+        strokeWidth: 2,
+        textColor: '#ffffff'
+      },
+      shape: 'parallelogram',
+      fields: {
+        label: 'Data'
+      }
+    },
+    connector: {
+      name: 'Connector',
+      desc: 'Flow Junction',
+      w: 40,
+      h: 40,
+      style: {
+        fill: '#64748b',
+        stroke: '#475569',
+        strokeWidth: 2,
+        textColor: '#ffffff'
+      },
+      shape: 'circle',
+      fields: {
+        label: 'A'
+      }
+    },
+    swimlane: {
+      name: 'Swimlane',
+      desc: 'Container/Lane',
+      w: 600,
+      h: 200,
+      style: {
+        fill: 'transparent',
+        stroke: '#94a3b8',
+        strokeWidth: 2,
+        textColor: '#64748b'
+      },
+      shape: 'rectangle',
+      fields: {
+        label: 'Swimlane'
+      }
+    }
+  }
+};
+
+function createNode(type, x, y, template) {
+  const node = {
+    id: generateId('n'),
+    type: type,
+    x: snapToGrid(x),
+    y: snapToGrid(y),
+    w: template.w,
+    h: template.h,
+    rotation: 0,
+    style: { ...template.style },
+    shape: template.shape || 'rectangle',
+    fields: { ...template.fields },
+    locked: false
+  };
+  
+  return node;
+}
+
+// ============================================================================
+// RENDERING
+// ============================================================================
+
+function render() {
+  renderNodes();
+  renderEdges();
+  renderSelection();
+  renderMinimap();
+  updateGrid();
+}
+
+function updateGrid() {
+  const gridLayer = document.getElementById('grid-layer');
+  gridLayer.style.display = state.page.showGrid ? 'block' : 'none';
+}
+
+function renderNodes() {
+  const nodesLayer = document.getElementById('nodes-layer');
+  nodesLayer.innerHTML = '';
+  
+  state.nodes.forEach(node => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'node');
+    g.setAttribute('data-id', node.id);
+    g.setAttribute('transform', `translate(${node.x}, ${node.y}) rotate(${node.rotation}, ${node.w/2}, ${node.h/2})`);
+    
+    if (state.selection.includes(node.id)) {
+      g.classList.add('selected');
+    }
+    
+    if (node.locked) {
+      g.classList.add('locked');
+    }
+    
+    // Draw shape based on type
+    let shapeEl;
+    
+    switch (node.shape) {
+      case 'rounded':
+        shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        shapeEl.setAttribute('width', node.w);
+        shapeEl.setAttribute('height', node.h);
+        shapeEl.setAttribute('rx', node.h / 2);
+        break;
+        
+      case 'diamond':
+        shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        const points = `${node.w/2},0 ${node.w},${node.h/2} ${node.w/2},${node.h} 0,${node.h/2}`;
+        shapeEl.setAttribute('points', points);
+        break;
+        
+      case 'parallelogram':
+        shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        const offset = node.h * 0.2;
+        shapeEl.setAttribute('points', `${offset},0 ${node.w},0 ${node.w-offset},${node.h} 0,${node.h}`);
+        break;
+        
+      case 'circle':
+        shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        shapeEl.setAttribute('cx', node.w / 2);
+        shapeEl.setAttribute('cy', node.h / 2);
+        shapeEl.setAttribute('r', node.w / 2);
+        break;
+        
+      default: // rectangle
+        shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        shapeEl.setAttribute('width', node.w);
+        shapeEl.setAttribute('height', node.h);
+        shapeEl.setAttribute('rx', 4);
+    }
+    
+    shapeEl.setAttribute('fill', node.style.fill);
+    shapeEl.setAttribute('stroke', node.style.stroke);
+    shapeEl.setAttribute('stroke-width', node.style.strokeWidth);
+    
+    g.appendChild(shapeEl);
+    
+    // Add text
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', node.w / 2);
+    text.setAttribute('y', node.h / 2);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'middle');
+    text.setAttribute('fill', node.style.textColor || '#000000');
+    text.setAttribute('font-size', '14');
+    text.setAttribute('font-weight', '500');
+    text.setAttribute('pointer-events', 'none');
+    
+    // Render fields based on node type
+    if (node.type.startsWith('org.')) {
+      // Org chart node - multi-line
+      const lines = [];
+      if (node.fields.role) lines.push(node.fields.role);
+      if (node.fields.name) lines.push(node.fields.name);
+      if (node.fields.dept) lines.push(node.fields.dept);
+      
+      lines.forEach((line, i) => {
+        const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        tspan.setAttribute('x', node.w / 2);
+        tspan.setAttribute('dy', i === 0 ? 0 : '1.2em');
+        tspan.textContent = line;
+        if (i === 0) {
+          tspan.setAttribute('font-weight', 'bold');
+          tspan.setAttribute('font-size', '16');
+        }
+        text.appendChild(tspan);
+      });
+      
+      // Center vertically
+      const lineHeight = 1.2;
+      const totalHeight = lines.length * 14 * lineHeight;
+      text.setAttribute('y', (node.h - totalHeight) / 2 + 14);
+    } else {
+      // Process node - single label
+      text.textContent = node.fields.label || '';
+    }
+    
+    g.appendChild(text);
+    nodesLayer.appendChild(g);
+    
+    // Add "Add Report" button for org nodes
+    if (node.type.startsWith('org.') && !node.locked && state.selection.includes(node.id)) {
+      const btn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      btn.setAttribute('class', 'add-report-btn');
+      btn.setAttribute('transform', `translate(${node.w/2 - 15}, ${node.h + 5})`);
+      btn.style.cursor = 'pointer';
+      
+      const btnBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      btnBg.setAttribute('width', '30');
+      btnBg.setAttribute('height', '20');
+      btnBg.setAttribute('rx', '4');
+      btnBg.setAttribute('fill', '#0071e3');
+      btn.appendChild(btnBg);
+      
+      const btnText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      btnText.setAttribute('x', '15');
+      btnText.setAttribute('y', '10');
+      btnText.setAttribute('text-anchor', 'middle');
+      btnText.setAttribute('dominant-baseline', 'middle');
+      btnText.setAttribute('fill', 'white');
+      btnText.setAttribute('font-size', '16');
+      btnText.setAttribute('font-weight', 'bold');
+      btnText.textContent = '+';
+      btn.appendChild(btnText);
+      
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addDirectReport(node);
+      });
+      
+      g.appendChild(btn);
+    }
+  });
+}
+
+function renderEdges() {
+  const edgesLayer = document.getElementById('edges-layer');
+  edgesLayer.innerHTML = '';
+  
+  state.edges.forEach(edge => {
+    const fromNode = state.nodes.find(n => n.id === edge.from.nodeId);
+    const toNode = state.nodes.find(n => n.id === edge.to.nodeId);
+    
+    if (!fromNode || !toNode) return;
+    
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-id', edge.id);
+    
+    // Calculate connection points
+    const fromPoint = getNodeCenter(fromNode);
+    const toPoint = getNodeCenter(toNode);
+    
+    // Create orthogonal path
+    const path = createOrthogonalPath(fromPoint, toPoint);
+    
+    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pathEl.setAttribute('d', path);
+    pathEl.setAttribute('class', 'edge');
+    pathEl.setAttribute('marker-end', 'url(#arrowhead)');
+    pathEl.setAttribute('stroke', edge.style?.stroke || '#666');
+    pathEl.setAttribute('stroke-width', edge.style?.strokeWidth || 2);
+    
+    if (state.selection.includes(edge.id)) {
+      pathEl.classList.add('selected');
+    }
+    
+    if (edge.style?.dashArray) {
+      pathEl.setAttribute('stroke-dasharray', edge.style.dashArray);
+    }
+    
+    g.appendChild(pathEl);
+    
+    // Add label if present
+    if (edge.label) {
+      const midPoint = getPathMidpoint(fromPoint, toPoint);
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', midPoint.x);
+      text.setAttribute('y', midPoint.y - 5);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('fill', '#333');
+      text.setAttribute('font-size', '12');
+      text.setAttribute('font-weight', '500');
+      text.style.pointerEvents = 'none';
+      
+      const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      const bbox = text.getBBox?.() || { width: 40, height: 16 };
+      bg.setAttribute('x', midPoint.x - bbox.width/2 - 4);
+      bg.setAttribute('y', midPoint.y - bbox.height/2 - 9);
+      bg.setAttribute('width', bbox.width + 8);
+      bg.setAttribute('height', bbox.height + 4);
+      bg.setAttribute('rx', '3');
+      bg.setAttribute('fill', 'white');
+      bg.setAttribute('stroke', '#ddd');
+      bg.style.pointerEvents = 'none';
+      
+      text.textContent = edge.label;
+      g.appendChild(bg);
+      g.appendChild(text);
+    }
+    
+    edgesLayer.appendChild(g);
+  });
+}
+
+function getNodeCenter(node) {
+  return {
+    x: node.x + node.w / 2,
+    y: node.y + node.h / 2
+  };
+}
+
+function getNodeConnectionPoint(node, angle) {
+  // Get point on node perimeter based on angle
+  const cx = node.x + node.w / 2;
+  const cy = node.y + node.h / 2;
+  
+  // Simple version - return edge points
+  if (Math.abs(angle) < Math.PI / 4 || Math.abs(angle) > 3 * Math.PI / 4) {
+    // Left or right
+    return {
+      x: angle > 0 ? node.x + node.w : node.x,
+      y: cy
+    };
+  } else {
+    // Top or bottom
+    return {
+      x: cx,
+      y: angle > 0 ? node.y + node.h : node.y
+    };
+  }
+}
+
+function createOrthogonalPath(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  
+  // Simple orthogonal routing - one elbow
+  const midX = from.x + dx / 2;
+  
+  return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
+}
+
+function getPathMidpoint(from, to) {
+  return {
+    x: (from.x + to.x) / 2,
+    y: (from.y + to.y) / 2
+  };
+}
+
+function renderSelection() {
+  const selectionLayer = document.getElementById('selection-layer');
+  selectionLayer.innerHTML = '';
+  
+  if (state.selection.length === 0) return;
+  
+  const selectedNodes = state.nodes.filter(n => state.selection.includes(n.id));
+  
+  if (selectedNodes.length === 0) return;
+  
+  const bounds = getBounds(selectedNodes);
+  
+  // Draw selection bounds
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', bounds.x - 2);
+  rect.setAttribute('y', bounds.y - 2);
+  rect.setAttribute('width', bounds.width + 4);
+  rect.setAttribute('height', bounds.height + 4);
+  rect.setAttribute('fill', 'none');
+  rect.setAttribute('stroke', '#0071e3');
+  rect.setAttribute('stroke-width', '2');
+  rect.setAttribute('stroke-dasharray', '4 2');
+  rect.style.pointerEvents = 'none';
+  
+  selectionLayer.appendChild(rect);
+  
+  // Add resize handles if single node selected
+  if (selectedNodes.length === 1 && !selectedNodes[0].locked) {
+    const node = selectedNodes[0];
+    const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+    
+    handles.forEach(pos => {
+      const handle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      handle.setAttribute('class', `resize-handle ${pos}`);
+      handle.setAttribute('width', '8');
+      handle.setAttribute('height', '8');
+      handle.setAttribute('data-handle', pos);
+      
+      let hx, hy;
+      
+      switch (pos) {
+        case 'nw': hx = node.x - 4; hy = node.y - 4; break;
+        case 'n': hx = node.x + node.w/2 - 4; hy = node.y - 4; break;
+        case 'ne': hx = node.x + node.w - 4; hy = node.y - 4; break;
+        case 'e': hx = node.x + node.w - 4; hy = node.y + node.h/2 - 4; break;
+        case 'se': hx = node.x + node.w - 4; hy = node.y + node.h - 4; break;
+        case 's': hx = node.x + node.w/2 - 4; hy = node.y + node.h - 4; break;
+        case 'sw': hx = node.x - 4; hy = node.y + node.h - 4; break;
+        case 'w': hx = node.x - 4; hy = node.y + node.h/2 - 4; break;
+      }
+      
+      handle.setAttribute('x', hx);
+      handle.setAttribute('y', hy);
+      
+      selectionLayer.appendChild(handle);
+    });
+  }
+}
+
+function renderMinimap() {
+  const minimapContent = document.getElementById('minimap-content');
+  minimapContent.innerHTML = '';
+  
+  if (state.nodes.length === 0) return;
+  
+  const bounds = getBounds(state.nodes);
+  const padding = 50;
+  const viewBox = {
+    x: bounds.x - padding,
+    y: bounds.y - padding,
+    width: bounds.width + padding * 2,
+    height: bounds.height + padding * 2
+  };
+  
+  // Update minimap SVG viewBox
+  const minimapSvg = document.getElementById('minimap-svg');
+  minimapSvg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+  
+  // Draw nodes as simple rectangles
+  state.nodes.forEach(node => {
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', node.x);
+    rect.setAttribute('y', node.y);
+    rect.setAttribute('width', node.w);
+    rect.setAttribute('height', node.h);
+    rect.setAttribute('fill', node.style.fill);
+    rect.setAttribute('opacity', '0.7');
+    minimapContent.appendChild(rect);
+  });
+  
+  // Draw edges as simple lines
+  state.edges.forEach(edge => {
+    const fromNode = state.nodes.find(n => n.id === edge.from.nodeId);
+    const toNode = state.nodes.find(n => n.id === edge.to.nodeId);
+    
+    if (!fromNode || !toNode) return;
+    
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', fromNode.x + fromNode.w/2);
+    line.setAttribute('y1', fromNode.y + fromNode.h/2);
+    line.setAttribute('x2', toNode.x + toNode.w/2);
+    line.setAttribute('y2', toNode.y + toNode.h/2);
+    line.setAttribute('stroke', '#666');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('opacity', '0.5');
+    minimapContent.appendChild(line);
+  });
+  
+  // Update viewport rectangle
+  updateMinimapViewport();
+}
+
+function updateMinimapViewport() {
+  const canvas = document.getElementById('canvas');
+  const rect = canvas.getBoundingClientRect();
+  const viewportRect = document.querySelector('.minimap-viewport');
+  
+  if (!viewportRect) return;
+  
+  // Calculate visible area in canvas coordinates
+  const topLeft = screenToCanvas(0, 0);
+  const bottomRight = screenToCanvas(rect.width, rect.height);
+  
+  viewportRect.setAttribute('x', topLeft.x);
+  viewportRect.setAttribute('y', topLeft.y);
+  viewportRect.setAttribute('width', bottomRight.x - topLeft.x);
+  viewportRect.setAttribute('height', bottomRight.y - topLeft.y);
+}
+
+// ============================================================================
+// INTERACTION - MOUSE & KEYBOARD
+// ============================================================================
+
+function initEvents() {
+  const canvas = document.getElementById('canvas');
+  const nodesLayer = document.getElementById('nodes-layer');
+  const edgesLayer = document.getElementById('edges-layer');
+  const selectionLayer = document.getElementById('selection-layer');
+  
+  // Mouse events
+  canvas.addEventListener('mousedown', onCanvasMouseDown);
+  canvas.addEventListener('mousemove', onCanvasMouseMove);
+  canvas.addEventListener('mouseup', onCanvasMouseUp);
+  canvas.addEventListener('wheel', onCanvasWheel, { passive: false });
+  canvas.addEventListener('contextmenu', onCanvasContextMenu);
+  canvas.addEventListener('dblclick', onCanvasDoubleClick);
+  
+  // Keyboard events
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+  
+  // Toolbar buttons
+  document.getElementById('btn-undo').addEventListener('click', undo);
+  document.getElementById('btn-redo').addEventListener('click', redo);
+  document.getElementById('btn-select').addEventListener('click', () => setTool('select'));
+  document.getElementById('btn-connector').addEventListener('click', () => setTool('connector'));
+  document.getElementById('btn-delete').addEventListener('click', deleteSelection);
+  document.getElementById('btn-duplicate').addEventListener('click', duplicateSelection);
+  document.getElementById('btn-group').addEventListener('click', groupSelection);
+  document.getElementById('btn-ungroup').addEventListener('click', ungroupSelection);
+  document.getElementById('btn-lock').addEventListener('click', toggleLockSelection);
+  document.getElementById('btn-front').addEventListener('click', bringToFront);
+  document.getElementById('btn-back').addEventListener('click', sendToBack);
+  document.getElementById('btn-tidy-tree').addEventListener('click', tidyTree);
+  document.getElementById('btn-grid').addEventListener('click', toggleGrid);
+  document.getElementById('btn-snap').addEventListener('click', toggleSnap);
+  document.getElementById('btn-contrast').addEventListener('click', toggleContrast);
+  document.getElementById('btn-export-png').addEventListener('click', exportPNG);
+  document.getElementById('btn-export-svg').addEventListener('click', exportSVG);
+  document.getElementById('btn-save-json').addEventListener('click', saveJSON);
+  document.getElementById('btn-load-json').addEventListener('click', () => document.getElementById('file-input').click());
+  document.getElementById('btn-new').addEventListener('click', newDiagram);
+  
+  // File input
+  document.getElementById('file-input').addEventListener('change', loadJSON);
+  
+  // Sidebar tabs
+  document.querySelectorAll('.sidebar-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      updateSidebar(tab.dataset.tab);
+    });
+  });
+  
+  // Context menu
+  document.addEventListener('click', () => {
+    document.getElementById('context-menu').classList.remove('visible');
+  });
+  
+  document.querySelectorAll('.context-menu-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      const action = item.dataset.action;
+      handleContextMenuAction(action);
+      document.getElementById('context-menu').classList.remove('visible');
+    });
+  });
+  
+  // Minimap
+  const minimapViewport = document.querySelector('.minimap-viewport');
+  minimapViewport.addEventListener('mousedown', onMinimapMouseDown);
+  
+  // Prevent text selection during drag
+  document.addEventListener('selectstart', (e) => {
+    if (dragState) e.preventDefault();
+  });
+}
+
+let keys = {};
+
+function onKeyDown(e) {
+  keys[e.key] = true;
+  
+  // Prevent default for canvas shortcuts
+  const canvas = document.getElementById('canvas');
+  if (document.activeElement === document.body || canvas.contains(document.activeElement)) {
+    const ctrl = e.ctrlKey || e.metaKey;
+    
+    if (ctrl && e.key === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        redo();
+      } else {
+        undo();
+      }
+    } else if (ctrl && e.key === 'd') {
+      e.preventDefault();
+      duplicateSelection();
+    } else if (ctrl && e.key === 'a') {
+      e.preventDefault();
+      selectAll();
+    } else if (ctrl && e.key === 'g') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        ungroupSelection();
+      } else {
+        groupSelection();
+      }
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      deleteSelection();
+    } else if (e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      nudgeSelection(e.key, e.shiftKey);
+    } else if (e.key === 'Escape') {
+      clearSelection();
+    }
+  }
+}
+
+function onKeyUp(e) {
+  keys[e.key] = false;
+}
+
+function onCanvasMouseDown(e) {
+  if (e.button === 2) return; // Right click handled separately
+  
+  const canvas = document.getElementById('canvas');
+  const canvasPos = screenToCanvas(e.clientX, e.clientY);
+  
+  // Check if clicking on resize handle
+  if (e.target.classList.contains('resize-handle')) {
+    startResize(e);
+    return;
+  }
+  
+  // Check if clicking on node
+  const nodeEl = e.target.closest('.node');
+  if (nodeEl) {
+    const nodeId = nodeEl.dataset.id;
+    const node = state.nodes.find(n => n.id === nodeId);
+    
+    if (node && !node.locked) {
+      if (!e.ctrlKey && !e.metaKey && !state.selection.includes(nodeId)) {
+        state.selection = [nodeId];
+      } else if ((e.ctrlKey || e.metaKey) && state.selection.includes(nodeId)) {
+        state.selection = state.selection.filter(id => id !== nodeId);
+      } else if (e.ctrlKey || e.metaKey) {
+        state.selection.push(nodeId);
+      }
+      
+      if (state.tool === 'connector') {
+        startConnectorDrawing(node);
+      } else {
+        startDraggingNodes(e, canvasPos);
+      }
+      
+      render();
+      updateInspector();
+      updateToolbar();
+      return;
+    }
+  }
+  
+  // Check if clicking on edge
+  const edgeEl = e.target.closest('.edge');
+  if (edgeEl) {
+    const edgeId = edgeEl.parentElement.dataset.id;
+    state.selection = [edgeId];
+    render();
+    updateInspector();
+    updateToolbar();
+    return;
+  }
+  
+  // Start marquee selection or pan
+  if (e.button === 1 || keys[' ']) {
+    // Middle mouse or space - pan
+    startPanning(e);
+  } else {
+    // Left mouse - marquee selection
+    state.selection = [];
+    startMarqueeSelection(e, canvasPos);
+    render();
+    updateInspector();
+    updateToolbar();
+  }
+}
+
+function onCanvasMouseMove(e) {
+  const canvasPos = screenToCanvas(e.clientX, e.clientY);
+  
+  if (dragState) {
+    if (dragState.type === 'nodes') {
+      const dx = canvasPos.x - dragState.lastPos.x;
+      const dy = canvasPos.y - dragState.lastPos.y;
+      
+      const selectedNodes = state.nodes.filter(n => state.selection.includes(n.id));
+      selectedNodes.forEach(node => {
+        node.x += dx;
+        node.y += dy;
+        
+        if (state.page.snap) {
+          node.x = snapToGrid(node.x);
+          node.y = snapToGrid(node.y);
+        }
+      });
+      
+      dragState.lastPos = canvasPos;
+      render();
+    } else if (dragState.type === 'pan') {
+      const dx = e.clientX - dragState.lastPos.x;
+      const dy = e.clientY - dragState.lastPos.y;
+      
+      state.viewport.x += dx;
+      state.viewport.y += dy;
+      
+      dragState.lastPos = { x: e.clientX, y: e.clientY };
+      updateViewport();
+      render();
+    } else if (dragState.type === 'marquee') {
+      dragState.current = canvasPos;
+      renderMarqueeBox();
+    } else if (dragState.type === 'resize') {
+      handleResize(e, canvasPos);
+    } else if (dragState.type === 'minimap') {
+      handleMinimapDrag(e);
+    }
+  } else if (connectorDrawing) {
+    connectorDrawing.currentPos = canvasPos;
+    renderConnectorPreview();
+  }
+}
+
+function onCanvasMouseUp(e) {
+  if (dragState) {
+    if (dragState.type === 'nodes' && dragState.moved) {
+      saveHistory();
+    } else if (dragState.type === 'marquee') {
+      finishMarqueeSelection();
+    } else if (dragState.type === 'resize') {
+      saveHistory();
+    }
+    
+    dragState = null;
+    render();
+  }
+  
+  if (connectorDrawing) {
+    finishConnectorDrawing(e);
+  }
+  
+  document.getElementById('canvas').classList.remove('panning');
+}
+
+function onCanvasWheel(e) {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    
+    const delta = -e.deltaY / 1000;
+    const oldScale = state.viewport.scale;
+    const newScale = Math.max(0.1, Math.min(5, oldScale * (1 + delta)));
+    
+    // Zoom towards mouse position
+    const canvasPos = screenToCanvas(e.clientX, e.clientY);
+    
+    state.viewport.scale = newScale;
+    
+    const newCanvasPos = screenToCanvas(e.clientX, e.clientY);
+    state.viewport.x += (newCanvasPos.x - canvasPos.x) * newScale;
+    state.viewport.y += (newCanvasPos.y - canvasPos.y) * newScale;
+    
+    updateViewport();
+    render();
+  }
+}
+
+function onCanvasContextMenu(e) {
+  e.preventDefault();
+  
+  const menu = document.getElementById('context-menu');
+  
+  // Position menu
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  menu.classList.add('visible');
+  
+  // Update menu items based on selection
+  const hasSelection = state.selection.length > 0;
+  const selectedNodes = state.nodes.filter(n => state.selection.includes(n.id));
+  const isOrgNode = selectedNodes.length === 1 && selectedNodes[0].type.startsWith('org.');
+  
+  document.querySelector('[data-action="duplicate"]').classList.toggle('disabled', !hasSelection);
+  document.querySelector('[data-action="delete"]').classList.toggle('disabled', !hasSelection);
+  document.querySelector('[data-action="lock"]').classList.toggle('disabled', !hasSelection);
+  document.querySelector('[data-action="group"]').classList.toggle('disabled', selectedNodes.length < 2);
+  document.querySelector('[data-action="front"]').classList.toggle('disabled', !hasSelection);
+  document.querySelector('[data-action="back"]').classList.toggle('disabled', !hasSelection);
+  document.querySelector('[data-action="save-asset"]').classList.toggle('disabled', !hasSelection);
+  document.querySelector('[data-action="add-report"]').classList.toggle('disabled', !isOrgNode);
+}
+
+function onCanvasDoubleClick(e) {
+  const nodeEl = e.target.closest('.node');
+  if (nodeEl) {
+    const nodeId = nodeEl.dataset.id;
+    const node = state.nodes.find(n => n.id === nodeId);
+    if (node && !node.locked) {
+      startTextEditing(node, e);
+    }
+  }
+}
+
+function startDraggingNodes(e, canvasPos) {
+  dragState = {
+    type: 'nodes',
+    lastPos: canvasPos,
+    moved: false
+  };
+}
+
+function startPanning(e) {
+  dragState = {
+    type: 'pan',
+    lastPos: { x: e.clientX, y: e.clientY }
+  };
+  document.getElementById('canvas').classList.add('panning');
+}
+
+function startMarqueeSelection(e, canvasPos) {
+  dragState = {
+    type: 'marquee',
+    start: canvasPos,
+    current: canvasPos
+  };
+}
+
+function renderMarqueeBox() {
+  const selectionLayer = document.getElementById('selection-layer');
+  let box = selectionLayer.querySelector('.selection-box');
+  
+  if (!box) {
+    box = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    box.setAttribute('class', 'selection-box');
+    selectionLayer.appendChild(box);
+  }
+  
+  const x = Math.min(dragState.start.x, dragState.current.x);
+  const y = Math.min(dragState.start.y, dragState.current.y);
+  const w = Math.abs(dragState.current.x - dragState.start.x);
+  const h = Math.abs(dragState.current.y - dragState.start.y);
+  
+  box.setAttribute('x', x);
+  box.setAttribute('y', y);
+  box.setAttribute('width', w);
+  box.setAttribute('height', h);
+}
+
+function finishMarqueeSelection() {
+  const x = Math.min(dragState.start.x, dragState.current.x);
+  const y = Math.min(dragState.start.y, dragState.current.y);
+  const w = Math.abs(dragState.current.x - dragState.start.x);
+  const h = Math.abs(dragState.current.y - dragState.start.y);
+  
+  state.selection = [];
+  
+  state.nodes.forEach(node => {
+    if (node.x + node.w >= x && node.x <= x + w &&
+        node.y + node.h >= y && node.y <= y + h) {
+      state.selection.push(node.id);
+    }
+  });
+  
+  updateInspector();
+  updateToolbar();
+}
+
+function startResize(e) {
+  const handle = e.target.dataset.handle;
+  const node = state.nodes.find(n => state.selection.includes(n.id));
+  
+  if (!node) return;
+  
+  dragState = {
+    type: 'resize',
+    handle: handle,
+    node: node,
+    startBounds: {
+      x: node.x,
+      y: node.y,
+      w: node.w,
+      h: node.h
+    },
+    startPos: screenToCanvas(e.clientX, e.clientY)
+  };
+  
+  e.stopPropagation();
+}
+
+function handleResize(e, canvasPos) {
+  const dx = canvasPos.x - dragState.startPos.x;
+  const dy = canvasPos.y - dragState.startPos.y;
+  const node = dragState.node;
+  const start = dragState.startBounds;
+  
+  const minSize = 20;
+  
+  switch (dragState.handle) {
+    case 'nw':
+      node.x = Math.min(start.x + dx, start.x + start.w - minSize);
+      node.y = Math.min(start.y + dy, start.y + start.h - minSize);
+      node.w = Math.max(minSize, start.w - dx);
+      node.h = Math.max(minSize, start.h - dy);
+      break;
+    case 'n':
+      node.y = Math.min(start.y + dy, start.y + start.h - minSize);
+      node.h = Math.max(minSize, start.h - dy);
+      break;
+    case 'ne':
+      node.y = Math.min(start.y + dy, start.y + start.h - minSize);
+      node.w = Math.max(minSize, start.w + dx);
+      node.h = Math.max(minSize, start.h - dy);
+      break;
+    case 'e':
+      node.w = Math.max(minSize, start.w + dx);
+      break;
+    case 'se':
+      node.w = Math.max(minSize, start.w + dx);
+      node.h = Math.max(minSize, start.h + dy);
+      break;
+    case 's':
+      node.h = Math.max(minSize, start.h + dy);
+      break;
+    case 'sw':
+      node.x = Math.min(start.x + dx, start.x + start.w - minSize);
+      node.w = Math.max(minSize, start.w - dx);
+      node.h = Math.max(minSize, start.h + dy);
+      break;
+    case 'w':
+      node.x = Math.min(start.x + dx, start.x + start.w - minSize);
+      node.w = Math.max(minSize, start.w - dx);
+      break;
+  }
+  
+  if (state.page.snap) {
+    node.x = snapToGrid(node.x);
+    node.y = snapToGrid(node.y);
+    node.w = snapToGrid(node.w);
+    node.h = snapToGrid(node.h);
+  }
+  
+  render();
+}
+
+function startConnectorDrawing(fromNode) {
+  connectorDrawing = {
+    from: fromNode,
+    currentPos: getNodeCenter(fromNode)
+  };
+  
+  document.getElementById('canvas').classList.add('drawing-connector');
+}
+
+function renderConnectorPreview() {
+  const selectionLayer = document.getElementById('selection-layer');
+  let preview = selectionLayer.querySelector('.connector-preview');
+  
+  if (!preview) {
+    preview = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    preview.setAttribute('class', 'connector-preview');
+    preview.setAttribute('stroke', '#0071e3');
+    preview.setAttribute('stroke-width', '2');
+    preview.setAttribute('stroke-dasharray', '4 2');
+    selectionLayer.appendChild(preview);
+  }
+  
+  const from = getNodeCenter(connectorDrawing.from);
+  preview.setAttribute('x1', from.x);
+  preview.setAttribute('y1', from.y);
+  preview.setAttribute('x2', connectorDrawing.currentPos.x);
+  preview.setAttribute('y2', connectorDrawing.currentPos.y);
+}
+
+function finishConnectorDrawing(e) {
+  const nodeEl = e.target.closest('.node');
+  
+  if (nodeEl) {
+    const toNodeId = nodeEl.dataset.id;
+    const toNode = state.nodes.find(n => n.id === toNodeId);
+    
+    if (toNode && toNode.id !== connectorDrawing.from.id) {
+      // Create edge
+      const edge = {
+        id: generateId('e'),
+        from: { nodeId: connectorDrawing.from.id },
+        to: { nodeId: toNode.id },
+        routing: 'orthogonal',
+        label: '',
+        style: {
+          stroke: '#666',
+          strokeWidth: 2
+        }
+      };
+      
+      state.edges.push(edge);
+      saveHistory();
+      showToast('Connector created');
+    }
+  }
+  
+  connectorDrawing = null;
+  document.getElementById('canvas').classList.remove('drawing-connector');
+  
+  // Remove preview
+  const preview = document.querySelector('.connector-preview');
+  if (preview) preview.remove();
+  
+  render();
+}
+
+function onMinimapMouseDown(e) {
+  e.stopPropagation();
+  
+  dragState = {
+    type: 'minimap',
+    lastPos: { x: e.clientX, y: e.clientY }
+  };
+  
+  handleMinimapDrag(e);
+}
+
+function handleMinimapDrag(e) {
+  const minimap = document.getElementById('minimap-svg');
+  const rect = minimap.getBoundingClientRect();
+  const viewBox = minimap.viewBox.baseVal;
+  
+  // Convert screen coords to SVG coords
+  const x = (e.clientX - rect.left) / rect.width * viewBox.width + viewBox.x;
+  const y = (e.clientY - rect.top) / rect.height * viewBox.height + viewBox.y;
+  
+  // Center viewport on clicked position
+  const canvas = document.getElementById('canvas');
+  const canvasRect = canvas.getBoundingClientRect();
+  const viewportWidth = canvasRect.width / state.viewport.scale;
+  const viewportHeight = canvasRect.height / state.viewport.scale;
+  
+  const targetX = x - viewportWidth / 2;
+  const targetY = y - viewportHeight / 2;
+  
+  state.viewport.x = -targetX * state.viewport.scale;
+  state.viewport.y = -targetY * state.viewport.scale;
+  
+  updateViewport();
+  render();
+}
+
+function updateViewport() {
+  const nodesLayer = document.getElementById('nodes-layer');
+  const edgesLayer = document.getElementById('edges-layer');
+  const gridLayer = document.getElementById('grid-layer');
+  const selectionLayer = document.getElementById('selection-layer');
+  
+  const transform = `translate(${state.viewport.x}px, ${state.viewport.y}px) scale(${state.viewport.scale})`;
+  
+  nodesLayer.style.transform = transform;
+  edgesLayer.style.transform = transform;
+  gridLayer.style.transform = transform;
+  selectionLayer.style.transform = transform;
+}
+
+// ============================================================================
+// TEXT EDITING
+// ============================================================================
+
+function startTextEditing(node, e) {
+  // Create text editor
+  const editor = document.createElement('div');
+  editor.className = 'text-editor';
+  editor.contentEditable = true;
+  
+  // Get field to edit based on node type
+  let fieldValue = '';
+  if (node.type.startsWith('org.')) {
+    fieldValue = node.fields.name || '';
+  } else {
+    fieldValue = node.fields.label || '';
+  }
+  
+  editor.textContent = fieldValue;
+  
+  // Position editor
+  const screenPos = canvasToScreen(node.x + node.w/2, node.y + node.h/2);
+  editor.style.left = (screenPos.x - 50) + 'px';
+  editor.style.top = (screenPos.y - 10) + 'px';
+  
+  document.body.appendChild(editor);
+  editor.focus();
+  
+  // Select all text
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  
+  // Save reference
+  textEditor = {
+    element: editor,
+    node: node
+  };
+  
+  // Handle finish
+  const finish = () => {
+    if (!textEditor) return;
+    
+    const newText = editor.textContent.trim();
+    
+    if (node.type.startsWith('org.')) {
+      node.fields.name = newText;
+    } else {
+      node.fields.label = newText;
+    }
+    
+    editor.remove();
+    textEditor = null;
+    
+    saveHistory();
+    render();
+    updateInspector();
+  };
+  
+  editor.addEventListener('blur', finish);
+  editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      editor.blur();
+    } else if (e.key === 'Escape') {
+      editor.remove();
+      textEditor = null;
+    }
+  });
+}
+
+// ============================================================================
+// ACTIONS
+// ============================================================================
+
+function setTool(tool) {
+  state.tool = tool;
+  
+  document.getElementById('btn-select').classList.toggle('active', tool === 'select');
+  document.getElementById('btn-connector').classList.toggle('active', tool === 'connector');
+  
+  if (tool === 'connector') {
+    document.getElementById('canvas').classList.add('drawing-connector');
+  } else {
+    document.getElementById('canvas').classList.remove('drawing-connector');
+  }
+}
+
+function deleteSelection() {
+  if (state.selection.length === 0) return;
+  
+  // Delete nodes
+  const nodeIds = state.selection.filter(id => id.startsWith('n_'));
+  state.nodes = state.nodes.filter(n => !nodeIds.includes(n.id));
+  
+  // Delete edges connected to deleted nodes
+  state.edges = state.edges.filter(e => 
+    !nodeIds.includes(e.from.nodeId) && !nodeIds.includes(e.to.nodeId)
+  );
+  
+  // Delete edges
+  const edgeIds = state.selection.filter(id => id.startsWith('e_'));
+  state.edges = state.edges.filter(e => !edgeIds.includes(e.id));
+  
+  state.selection = [];
+  
+  saveHistory();
+  render();
+  updateInspector();
+  updateToolbar();
+  showToast(`Deleted ${nodeIds.length + edgeIds.length} items`);
+}
+
+function duplicateSelection() {
+  if (state.selection.length === 0) return;
+  
+  const nodesToDup = state.nodes.filter(n => state.selection.includes(n.id));
+  const newSelection = [];
+  const idMap = {};
+  
+  // Duplicate nodes
+  nodesToDup.forEach(node => {
+    const newNode = JSON.parse(JSON.stringify(node));
+    newNode.id = generateId('n');
+    newNode.x += 20;
+    newNode.y += 20;
+    
+    idMap[node.id] = newNode.id;
+    newSelection.push(newNode.id);
+    state.nodes.push(newNode);
+  });
+  
+  // Duplicate edges between duplicated nodes
+  state.edges.forEach(edge => {
+    if (idMap[edge.from.nodeId] && idMap[edge.to.nodeId]) {
+      const newEdge = JSON.parse(JSON.stringify(edge));
+      newEdge.id = generateId('e');
+      newEdge.from.nodeId = idMap[edge.from.nodeId];
+      newEdge.to.nodeId = idMap[edge.to.nodeId];
+      state.edges.push(newEdge);
+    }
+  });
+  
+  state.selection = newSelection;
+  
+  saveHistory();
+  render();
+  updateInspector();
+  showToast(`Duplicated ${nodesToDup.length} items`);
+}
+
+function groupSelection() {
+  // For now, just show toast - full grouping would require group structure
+  showToast('Grouping feature - coming soon!');
+}
+
+function ungroupSelection() {
+  showToast('Ungrouping feature - coming soon!');
+}
+
+function toggleLockSelection() {
+  if (state.selection.length === 0) return;
+  
+  const nodes = state.nodes.filter(n => state.selection.includes(n.id));
+  const anyLocked = nodes.some(n => n.locked);
+  
+  nodes.forEach(node => {
+    node.locked = !anyLocked;
+  });
+  
+  saveHistory();
+  render();
+  showToast(anyLocked ? 'Unlocked' : 'Locked');
+}
+
+function bringToFront() {
+  if (state.selection.length === 0) return;
+  
+  const selectedNodes = state.nodes.filter(n => state.selection.includes(n.id));
+  const otherNodes = state.nodes.filter(n => !state.selection.includes(n.id));
+  
+  state.nodes = [...otherNodes, ...selectedNodes];
+  
+  saveHistory();
+  render();
+  showToast('Brought to front');
+}
+
+function sendToBack() {
+  if (state.selection.length === 0) return;
+  
+  const selectedNodes = state.nodes.filter(n => state.selection.includes(n.id));
+  const otherNodes = state.nodes.filter(n => !state.selection.includes(n.id));
+  
+  state.nodes = [...selectedNodes, ...otherNodes];
+  
+  saveHistory();
+  render();
+  showToast('Sent to back');
+}
+
+function selectAll() {
+  state.selection = state.nodes.map(n => n.id);
+  render();
+  updateInspector();
+  updateToolbar();
+}
+
+function clearSelection() {
+  state.selection = [];
+  render();
+  updateInspector();
+  updateToolbar();
+}
+
+function nudgeSelection(key, large) {
+  if (state.selection.length === 0) return;
+  
+  const amount = large ? 10 : 1;
+  const nodes = state.nodes.filter(n => state.selection.includes(n.id));
+  
+  nodes.forEach(node => {
+    if (node.locked) return;
+    
+    switch (key) {
+      case 'ArrowLeft': node.x -= amount; break;
+      case 'ArrowRight': node.x += amount; break;
+      case 'ArrowUp': node.y -= amount; break;
+      case 'ArrowDown': node.y += amount; break;
+    }
+  });
+  
+  saveHistory();
+  render();
+}
+
+function addDirectReport(parentNode) {
+  // Find appropriate template based on parent type
+  let childTemplate;
+  if (parentNode.type === 'org.executive') {
+    childTemplate = NODE_TEMPLATES.org.manager;
+  } else if (parentNode.type === 'org.manager') {
+    childTemplate = NODE_TEMPLATES.org.ic;
+  } else {
+    childTemplate = NODE_TEMPLATES.org.ic;
+  }
+  
+  // Create child node below parent
+  const childY = parentNode.y + parentNode.h + 80;
+  const childX = parentNode.x + (parentNode.w - childTemplate.w) / 2;
+  
+  const childNode = createNode('org.' + Object.keys(NODE_TEMPLATES.org).find(k => NODE_TEMPLATES.org[k] === childTemplate), childX, childY, childTemplate);
+  state.nodes.push(childNode);
+  
+  // Create edge
+  const edge = {
+    id: generateId('e'),
+    from: { nodeId: parentNode.id },
+    to: { nodeId: childNode.id },
+    routing: 'orthogonal',
+    label: '',
+    style: {
+      stroke: '#666',
+      strokeWidth: 2
+    }
+  };
+  state.edges.push(edge);
+  
+  // Select new node
+  state.selection = [childNode.id];
+  
+  saveHistory();
+  render();
+  updateInspector();
+  showToast('Added direct report');
+}
+
+// ============================================================================
+// AUTO-LAYOUT (TIDY TREE)
+// ============================================================================
+
+function tidyTree() {
+  // Find root nodes (nodes with no incoming edges)
+  const hasIncoming = new Set();
+  state.edges.forEach(e => hasIncoming.add(e.to.nodeId));
+  
+  const roots = state.nodes.filter(n => 
+    n.type.startsWith('org.') && !hasIncoming.has(n.id)
+  );
+  
+  if (roots.length === 0) {
+    showToast('No org chart root found');
+    return;
+  }
+  
+  // Simple tree layout
+  const levelHeight = 150;
+  const siblingGap = 50;
+  
+  let currentY = 100;
+  
+  function layoutNode(node, level, x) {
+    node.x = x;
+    node.y = currentY;
+    
+    // Find children
+    const children = state.edges
+      .filter(e => e.from.nodeId === node.id)
+      .map(e => state.nodes.find(n => n.id === e.to.nodeId))
+      .filter(n => n);
+    
+    if (children.length > 0) {
+      const nextY = currentY;
+      currentY += levelHeight;
+      
+      let childX = x;
+      children.forEach((child, i) => {
+        layoutNode(child, level + 1, childX);
+        childX += child.w + siblingGap;
+      });
+      
+      // Center parent over children
+      const firstChild = children[0];
+      const lastChild = children[children.length - 1];
+      const childrenWidth = (lastChild.x + lastChild.w) - firstChild.x;
+      node.x = firstChild.x + (childrenWidth - node.w) / 2;
+      
+      currentY = nextY + levelHeight;
+    }
+  }
+  
+  roots.forEach((root, i) => {
+    layoutNode(root, 0, 100 + i * 400);
+  });
+  
+  saveHistory();
+  render();
+  showToast('Applied tidy tree layout');
+}
+
+// ============================================================================
+// SIDEBAR
+// ============================================================================
+
+function updateSidebar(tab) {
+  const content = document.getElementById('sidebar-content');
+  content.innerHTML = '';
+  
+  if (tab === 'org') {
+    renderShapePalette(content, 'org', NODE_TEMPLATES.org);
+  } else if (tab === 'process') {
+    renderShapePalette(content, 'process', NODE_TEMPLATES.process);
+  } else if (tab === 'saved') {
+    renderSavedAssets(content);
+  }
+}
+
+function renderShapePalette(container, category, templates) {
+  const section = document.createElement('div');
+  section.className = 'shape-category';
+  
+  const title = document.createElement('h3');
+  title.textContent = category === 'org' ? 'Organization' : 'Process Flow';
+  section.appendChild(title);
+  
+  Object.entries(templates).forEach(([key, template]) => {
+    const item = document.createElement('div');
+    item.className = 'shape-item';
+    item.draggable = true;
+    item.dataset.type = `${category}.${key}`;
+    
+    // Preview
+    const preview = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    preview.setAttribute('class', 'shape-preview');
+    preview.setAttribute('viewBox', '0 0 40 40');
+    
+    let shape;
+    switch (template.shape) {
+      case 'rounded':
+        shape = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        shape.setAttribute('x', '5');
+        shape.setAttribute('y', '10');
+        shape.setAttribute('width', '30');
+        shape.setAttribute('height', '20');
+        shape.setAttribute('rx', '10');
+        break;
+      case 'diamond':
+        shape = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        shape.setAttribute('points', '20,5 35,20 20,35 5,20');
+        break;
+      case 'parallelogram':
+        shape = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        shape.setAttribute('points', '10,10 35,10 30,30 5,30');
+        break;
+      case 'circle':
+        shape = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        shape.setAttribute('cx', '20');
+        shape.setAttribute('cy', '20');
+        shape.setAttribute('r', '15');
+        break;
+      default:
+        shape = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        shape.setAttribute('x', '5');
+        shape.setAttribute('y', '10');
+        shape.setAttribute('width', '30');
+        shape.setAttribute('height', '20');
+        shape.setAttribute('rx', '2');
+    }
+    
+    shape.setAttribute('fill', template.style.fill);
+    shape.setAttribute('stroke', template.style.stroke);
+    shape.setAttribute('stroke-width', '2');
+    
+    preview.appendChild(shape);
+    item.appendChild(preview);
+    
+    // Info
+    const info = document.createElement('div');
+    info.className = 'shape-info';
+    
+    const name = document.createElement('div');
+    name.className = 'shape-name';
+    name.textContent = template.name;
+    info.appendChild(name);
+    
+    const desc = document.createElement('div');
+    desc.className = 'shape-desc';
+    desc.textContent = template.desc;
+    info.appendChild(desc);
+    
+    item.appendChild(info);
+    
+    // Drag handlers
+    item.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('shape-type', item.dataset.type);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+    
+    section.appendChild(item);
+  });
+  
+  container.appendChild(section);
+}
+
+function renderSavedAssets(container) {
+  if (state.assets.length === 0) {
+    const empty = document.createElement('p');
+    empty.style.color = 'var(--text-secondary)';
+    empty.style.fontSize = '13px';
+    empty.style.padding = '20px 0';
+    empty.textContent = 'No saved assets yet. Select objects and use "Save as Asset" from the context menu.';
+    container.appendChild(empty);
+    return;
+  }
+  
+  state.assets.forEach(asset => {
+    const item = document.createElement('div');
+    item.className = 'asset-item';
+    item.draggable = true;
+    
+    // Preview (simplified)
+    const preview = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    preview.setAttribute('class', 'asset-preview');
+    preview.setAttribute('viewBox', '0 0 32 32');
+    
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', '4');
+    rect.setAttribute('y', '4');
+    rect.setAttribute('width', '24');
+    rect.setAttribute('height', '24');
+    rect.setAttribute('rx', '2');
+    rect.setAttribute('fill', '#3b82f6');
+    rect.setAttribute('stroke', '#2563eb');
+    rect.setAttribute('stroke-width', '2');
+    
+    preview.appendChild(rect);
+    item.appendChild(preview);
+    
+    // Info
+    const info = document.createElement('div');
+    info.className = 'asset-info';
+    
+    const name = document.createElement('div');
+    name.className = 'asset-name';
+    name.textContent = asset.name;
+    info.appendChild(name);
+    
+    item.appendChild(info);
+    
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'asset-actions';
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn';
+    deleteBtn.textContent = '×';
+    deleteBtn.title = 'Delete';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteAsset(asset.id);
+    });
+    actions.appendChild(deleteBtn);
+    
+    item.appendChild(actions);
+    
+    // Drag to canvas
+    item.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('asset-id', asset.id);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+    
+    container.appendChild(item);
+  });
+}
+
+// Canvas drop handler
+document.getElementById('canvas').addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+});
+
+document.getElementById('canvas').addEventListener('drop', (e) => {
+  e.preventDefault();
+  
+  const shapeType = e.dataTransfer.getData('shape-type');
+  const assetId = e.dataTransfer.getData('asset-id');
+  
+  const canvasPos = screenToCanvas(e.clientX, e.clientY);
+  
+  if (shapeType) {
+    // Create node from template
+    const [category, key] = shapeType.split('.');
+    const template = NODE_TEMPLATES[category][key];
+    
+    if (template) {
+      const node = createNode(shapeType, canvasPos.x - template.w/2, canvasPos.y - template.h/2, template);
+      state.nodes.push(node);
+      state.selection = [node.id];
+      
+      saveHistory();
+      render();
+      updateInspector();
+      updateToolbar();
+    }
+  } else if (assetId) {
+    // Create node from asset
+    const asset = state.assets.find(a => a.id === assetId);
+    if (asset && asset.nodeTemplate) {
+      const node = JSON.parse(JSON.stringify(asset.nodeTemplate));
+      node.id = generateId('n');
+      node.x = canvasPos.x - node.w/2;
+      node.y = canvasPos.y - node.h/2;
+      
+      state.nodes.push(node);
+      state.selection = [node.id];
+      
+      saveHistory();
+      render();
+      updateInspector();
+      updateToolbar();
+    }
+  }
+});
+
+// ============================================================================
+// INSPECTOR
+// ============================================================================
+
+function updateInspector() {
+  const content = document.getElementById('inspector-content');
+  content.innerHTML = '';
+  
+  if (state.selection.length === 0) {
+    content.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">Select an object to edit its properties</p>';
+    return;
+  }
+  
+  if (state.selection.length === 1) {
+    const id = state.selection[0];
+    
+    if (id.startsWith('n_')) {
+      const node = state.nodes.find(n => n.id === id);
+      if (node) renderNodeInspector(content, node);
+    } else if (id.startsWith('e_')) {
+      const edge = state.edges.find(e => e.id === id);
+      if (edge) renderEdgeInspector(content, edge);
+    }
+  } else {
+    content.innerHTML = `<p style="color: var(--text-secondary); font-size: 13px;">${state.selection.length} objects selected</p>`;
+  }
+}
+
+function renderNodeInspector(container, node) {
+  // Position section
+  const posSection = createInspectorSection('Position & Size');
+  
+  addFormField(posSection, 'X', 'number', node.x, (val) => {
+    node.x = parseFloat(val) || 0;
+    render();
+    saveHistory();
+  });
+  
+  addFormField(posSection, 'Y', 'number', node.y, (val) => {
+    node.y = parseFloat(val) || 0;
+    render();
+    saveHistory();
+  });
+  
+  addFormField(posSection, 'Width', 'number', node.w, (val) => {
+    node.w = Math.max(20, parseFloat(val) || 20);
+    render();
+    saveHistory();
+  });
+  
+  addFormField(posSection, 'Height', 'number', node.h, (val) => {
+    node.h = Math.max(20, parseFloat(val) || 20);
+    render();
+    saveHistory();
+  });
+  
+  container.appendChild(posSection);
+  
+  // Fields section
+  const fieldsSection = createInspectorSection('Content');
+  
+  Object.entries(node.fields).forEach(([key, value]) => {
+    addFormField(fieldsSection, key.charAt(0).toUpperCase() + key.slice(1), 'text', value, (val) => {
+      node.fields[key] = val;
+      render();
+      saveHistory();
+    });
+  });
+  
+  container.appendChild(fieldsSection);
+  
+  // Style section
+  const styleSection = createInspectorSection('Style');
+  
+  addColorField(styleSection, 'Fill', node.style.fill, (val) => {
+    node.style.fill = val;
+    render();
+    saveHistory();
+  });
+  
+  addColorField(styleSection, 'Stroke', node.style.stroke, (val) => {
+    node.style.stroke = val;
+    render();
+    saveHistory();
+  });
+  
+  addFormField(styleSection, 'Stroke Width', 'number', node.style.strokeWidth, (val) => {
+    node.style.strokeWidth = Math.max(0, parseFloat(val) || 0);
+    render();
+    saveHistory();
+  });
+  
+  container.appendChild(styleSection);
+}
+
+function renderEdgeInspector(container, edge) {
+  const section = createInspectorSection('Edge Properties');
+  
+  addFormField(section, 'Label', 'text', edge.label || '', (val) => {
+    edge.label = val;
+    render();
+    saveHistory();
+  });
+  
+  addColorField(section, 'Color', edge.style?.stroke || '#666', (val) => {
+    if (!edge.style) edge.style = {};
+    edge.style.stroke = val;
+    render();
+    saveHistory();
+  });
+  
+  addFormField(section, 'Width', 'number', edge.style?.strokeWidth || 2, (val) => {
+    if (!edge.style) edge.style = {};
+    edge.style.strokeWidth = Math.max(1, parseFloat(val) || 1);
+    render();
+    saveHistory();
+  });
+  
+  container.appendChild(section);
+}
+
+function createInspectorSection(title) {
+  const section = document.createElement('div');
+  section.className = 'inspector-section';
+  
+  const h3 = document.createElement('h3');
+  h3.textContent = title;
+  section.appendChild(h3);
+  
+  return section;
+}
+
+function addFormField(container, label, type, value, onChange) {
+  const group = document.createElement('div');
+  group.className = 'form-group';
+  
+  const labelEl = document.createElement('label');
+  labelEl.textContent = label;
+  group.appendChild(labelEl);
+  
+  const input = document.createElement('input');
+  input.type = type;
+  input.value = value;
+  input.addEventListener('change', (e) => onChange(e.target.value));
+  input.addEventListener('input', (e) => {
+    if (type === 'number') onChange(e.target.value);
+  });
+  group.appendChild(input);
+  
+  container.appendChild(group);
+}
+
+function addColorField(container, label, value, onChange) {
+  const group = document.createElement('div');
+  group.className = 'form-group';
+  
+  const labelEl = document.createElement('label');
+  labelEl.textContent = label;
+  group.appendChild(labelEl);
+  
+  const pickerGroup = document.createElement('div');
+  pickerGroup.className = 'color-picker-group';
+  
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.value = value;
+  colorInput.addEventListener('change', (e) => {
+    textInput.value = e.target.value;
+    onChange(e.target.value);
+  });
+  pickerGroup.appendChild(colorInput);
+  
+  const textInput = document.createElement('input');
+  textInput.type = 'text';
+  textInput.value = value;
+  textInput.addEventListener('change', (e) => {
+    colorInput.value = e.target.value;
+    onChange(e.target.value);
+  });
+  pickerGroup.appendChild(textInput);
+  
+  group.appendChild(pickerGroup);
+  container.appendChild(group);
+}
+
+// ============================================================================
+// TOOLBAR UPDATE
+// ============================================================================
+
+function updateToolbar() {
+  const hasSelection = state.selection.length > 0;
+  const hasNodes = state.selection.some(id => id.startsWith('n_'));
+  const multipleNodes = state.selection.filter(id => id.startsWith('n_')).length > 1;
+  
+  document.getElementById('btn-delete').disabled = !hasSelection;
+  document.getElementById('btn-duplicate').disabled = !hasSelection;
+  document.getElementById('btn-group').disabled = !multipleNodes;
+  document.getElementById('btn-ungroup').disabled = true; // Not implemented
+  document.getElementById('btn-lock').disabled = !hasNodes;
+  document.getElementById('btn-front').disabled = !hasNodes;
+  document.getElementById('btn-back').disabled = !hasNodes;
+}
+
+// ============================================================================
+// CONTEXT MENU ACTIONS
+// ============================================================================
+
+function handleContextMenuAction(action) {
+  switch (action) {
+    case 'duplicate': duplicateSelection(); break;
+    case 'delete': deleteSelection(); break;
+    case 'lock': toggleLockSelection(); break;
+    case 'group': groupSelection(); break;
+    case 'front': bringToFront(); break;
+    case 'back': sendToBack(); break;
+    case 'save-asset': saveAsAsset(); break;
+    case 'add-report': 
+      const node = state.nodes.find(n => state.selection.includes(n.id));
+      if (node) addDirectReport(node);
+      break;
+  }
+}
+
+function saveAsAsset() {
+  if (state.selection.length === 0) return;
+  
+  const node = state.nodes.find(n => state.selection.includes(n.id));
+  if (!node) return;
+  
+  const name = prompt('Asset name:', node.fields.name || node.fields.label || 'Saved Asset');
+  if (!name) return;
+  
+  const asset = {
+    id: generateId('asset'),
+    name: name,
+    nodeTemplate: JSON.parse(JSON.stringify(node))
+  };
+  
+  state.assets.push(asset);
+  saveAssets();
+  
+  // Update sidebar if on saved tab
+  const activeTab = document.querySelector('.sidebar-tab.active');
+  if (activeTab && activeTab.dataset.tab === 'saved') {
+    updateSidebar('saved');
+  }
+  
+  showToast('Asset saved');
+}
+
+function deleteAsset(assetId) {
+  state.assets = state.assets.filter(a => a.id !== assetId);
+  saveAssets();
+  updateSidebar('saved');
+  showToast('Asset deleted');
+}
+
+// ============================================================================
+// SETTINGS TOGGLES
+// ============================================================================
+
+function toggleGrid() {
+  state.page.showGrid = !state.page.showGrid;
+  document.getElementById('btn-grid').classList.toggle('active', state.page.showGrid);
+  updateGrid();
+}
+
+function toggleSnap() {
+  state.page.snap = !state.page.snap;
+  document.getElementById('btn-snap').classList.toggle('active', state.page.snap);
+  showToast(state.page.snap ? 'Snap enabled' : 'Snap disabled');
+}
+
+function toggleContrast() {
+  document.body.classList.toggle('high-contrast');
+  showToast('Contrast mode toggled');
+}
+
+// ============================================================================
+// EXPORT / IMPORT
+// ============================================================================
+
+function exportPNG() {
+  showToast('Exporting PNG...');
+  
+  // Create offscreen canvas
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Get bounds
+  const bounds = getBounds(state.nodes);
+  const padding = 40;
+  
+  // Set canvas size (2x for quality)
+  canvas.width = (bounds.width + padding * 2) * 2;
+  canvas.height = (bounds.height + padding * 2) * 2;
+  
+  ctx.scale(2, 2);
+  ctx.translate(-bounds.x + padding, -bounds.y + padding);
+  
+  // White background
+  ctx.fillStyle = 'white';
+  ctx.fillRect(bounds.x - padding, bounds.y - padding, bounds.width + padding * 2, bounds.height + padding * 2);
+  
+  // Draw edges
+  state.edges.forEach(edge => {
+    const fromNode = state.nodes.find(n => n.id === edge.from.nodeId);
+    const toNode = state.nodes.find(n => n.id === edge.to.nodeId);
+    
+    if (!fromNode || !toNode) return;
+    
+    const from = getNodeCenter(fromNode);
+    const to = getNodeCenter(toNode);
+    
+    ctx.strokeStyle = edge.style?.stroke || '#666';
+    ctx.lineWidth = edge.style?.strokeWidth || 2;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    
+    const midX = (from.x + to.x) / 2;
+    ctx.lineTo(midX, from.y);
+    ctx.lineTo(midX, to.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    
+    // Arrow
+    const angle = Math.atan2(to.y - from.y, midX - from.x);
+    const arrowSize = 10;
+    ctx.fillStyle = edge.style?.stroke || '#666';
+    ctx.beginPath();
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - arrowSize * Math.cos(angle - Math.PI / 6), to.y - arrowSize * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(to.x - arrowSize * Math.cos(angle + Math.PI / 6), to.y - arrowSize * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  // Draw nodes
+  state.nodes.forEach(node => {
+    ctx.fillStyle = node.style.fill;
+    ctx.strokeStyle = node.style.stroke;
+    ctx.lineWidth = node.style.strokeWidth;
+    
+    // Draw shape
+    ctx.beginPath();
+    
+    switch (node.shape) {
+      case 'rounded':
+        const r = node.h / 2;
+        ctx.moveTo(node.x + r, node.y);
+        ctx.lineTo(node.x + node.w - r, node.y);
+        ctx.arc(node.x + node.w - r, node.y + r, r, -Math.PI/2, Math.PI/2);
+        ctx.lineTo(node.x + r, node.y + node.h);
+        ctx.arc(node.x + r, node.y + r, r, Math.PI/2, -Math.PI/2);
+        break;
+        
+      case 'diamond':
+        ctx.moveTo(node.x + node.w/2, node.y);
+        ctx.lineTo(node.x + node.w, node.y + node.h/2);
+        ctx.lineTo(node.x + node.w/2, node.y + node.h);
+        ctx.lineTo(node.x, node.y + node.h/2);
+        ctx.closePath();
+        break;
+        
+      case 'circle':
+        ctx.arc(node.x + node.w/2, node.y + node.h/2, node.w/2, 0, Math.PI * 2);
+        break;
+        
+      default:
+        ctx.rect(node.x, node.y, node.w, node.h);
+    }
+    
+    ctx.fill();
+    ctx.stroke();
+    
+    // Draw text
+    ctx.fillStyle = node.style.textColor || '#000000';
+    ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    const text = node.fields.name || node.fields.label || '';
+    ctx.fillText(text, node.x + node.w/2, node.y + node.h/2);
+  });
+  
+  // Download
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `diagram-${Date.now()}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('PNG exported');
+  });
+}
+
+function exportSVG() {
+  const bounds = getBounds(state.nodes);
+  const padding = 40;
+  
+  const width = bounds.width + padding * 2;
+  const height = bounds.height + padding * 2;
+  const offsetX = bounds.x - padding;
+  const offsetY = bounds.y - padding;
+  
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  <rect width="${width}" height="${height}" fill="white"/>
+  <g transform="translate(${-offsetX}, ${-offsetY})">`;
+  
+  // Edges
+  state.edges.forEach(edge => {
+    const fromNode = state.nodes.find(n => n.id === edge.from.nodeId);
+    const toNode = state.nodes.find(n => n.id === edge.to.nodeId);
+    
+    if (!fromNode || !toNode) return;
+    
+    const from = getNodeCenter(fromNode);
+    const to = getNodeCenter(toNode);
+    const path = createOrthogonalPath(from, to);
+    
+    svg += `
+    <path d="${path}" fill="none" stroke="${edge.style?.stroke || '#666'}" stroke-width="${edge.style?.strokeWidth || 2}"/>`;
+  });
+  
+  // Nodes
+  state.nodes.forEach(node => {
+    svg += `
+    <g transform="translate(${node.x}, ${node.y})">`;
+    
+    switch (node.shape) {
+      case 'rounded':
+        svg += `
+      <rect width="${node.w}" height="${node.h}" rx="${node.h/2}" fill="${node.style.fill}" stroke="${node.style.stroke}" stroke-width="${node.style.strokeWidth}"/>`;
+        break;
+        
+      case 'diamond':
+        svg += `
+      <polygon points="${node.w/2},0 ${node.w},${node.h/2} ${node.w/2},${node.h} 0,${node.h/2}" fill="${node.style.fill}" stroke="${node.style.stroke}" stroke-width="${node.style.strokeWidth}"/>`;
+        break;
+        
+      case 'circle':
+        svg += `
+      <circle cx="${node.w/2}" cy="${node.h/2}" r="${node.w/2}" fill="${node.style.fill}" stroke="${node.style.stroke}" stroke-width="${node.style.strokeWidth}"/>`;
+        break;
+        
+      default:
+        svg += `
+      <rect width="${node.w}" height="${node.h}" rx="4" fill="${node.style.fill}" stroke="${node.style.stroke}" stroke-width="${node.style.strokeWidth}"/>`;
+    }
+    
+    const text = node.fields.name || node.fields.label || '';
+    svg += `
+      <text x="${node.w/2}" y="${node.h/2}" text-anchor="middle" dominant-baseline="middle" fill="${node.style.textColor || '#000'}" font-size="14">${text}</text>
+    </g>`;
+  });
+  
+  svg += `
+  </g>
+</svg>`;
+  
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `diagram-${Date.now()}.svg`;
+  a.click();
+  URL.revokeObjectURL(url);
+  
+  showToast('SVG exported');
+}
+
+function saveJSON() {
+  const data = {
+    version: state.version,
+    page: state.page,
+    nodes: state.nodes,
+    edges: state.edges
+  };
+  
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `diagram-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  
+  showToast('JSON saved');
+}
+
+function loadJSON(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const data = JSON.parse(event.target.result);
+      
+      // Validate
+      if (!data.nodes || !data.edges) {
+        throw new Error('Invalid format');
+      }
+      
+      // Load data
+      state.nodes = data.nodes;
+      state.edges = data.edges;
+      state.page = data.page || state.page;
+      state.selection = [];
+      state.history = [];
+      state.historyIndex = -1;
+      
+      // Find max ID
+      let maxId = 0;
+      [...state.nodes, ...state.edges].forEach(item => {
+        const match = item.id.match(/_(\d+)$/);
+        if (match) {
+          maxId = Math.max(maxId, parseInt(match[1]));
+        }
+      });
+      state.nextId = maxId + 1;
+      
+      saveHistory();
+      render();
+      updateInspector();
+      updateToolbar();
+      
+      showToast('Diagram loaded');
+    } catch (err) {
+      alert('Failed to load file: ' + err.message);
+    }
+  };
+  
+  reader.readAsText(file);
+  e.target.value = ''; // Reset input
+}
+
+function newDiagram() {
+  if (state.nodes.length > 0) {
+    if (!confirm('Create new diagram? Current work will be lost if not saved.')) {
+      return;
+    }
+  }
+  
+  state.nodes = [];
+  state.edges = [];
+  state.selection = [];
+  state.history = [];
+  state.historyIndex = -1;
+  state.nextId = 1;
+  state.viewport = { x: 0, y: 0, scale: 1 };
+  
+  saveHistory();
+  render();
+  updateInspector();
+  updateToolbar();
+  updateViewport();
+  
+  showToast('New diagram created');
+}
+
+// ============================================================================
+// PERSISTENCE
+// ============================================================================
+
+function autosave() {
+  try {
+    const data = {
+      version: state.version,
+      page: state.page,
+      nodes: state.nodes,
+      edges: state.edges,
+      viewport: state.viewport,
+      timestamp: Date.now()
+    };
+    
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data));
+  } catch (err) {
+    console.error('Autosave failed:', err);
+  }
+}
+
+function loadAutosave() {
+  try {
+    const saved = localStorage.getItem(AUTOSAVE_KEY);
+    if (!saved) return false;
+    
+    const data = JSON.parse(saved);
+    
+    state.nodes = data.nodes || [];
+    state.edges = data.edges || [];
+    state.page = data.page || state.page;
+    state.viewport = data.viewport || state.viewport;
+    
+    // Find max ID
+    let maxId = 0;
+    [...state.nodes, ...state.edges].forEach(item => {
+      const match = item.id.match(/_(\d+)$/);
+      if (match) {
+        maxId = Math.max(maxId, parseInt(match[1]));
+      }
+    });
+    state.nextId = maxId + 1;
+    
+    return true;
+  } catch (err) {
+    console.error('Load autosave failed:', err);
+    return false;
+  }
+}
+
+function saveAssets() {
+  try {
+    localStorage.setItem(ASSETS_KEY, JSON.stringify(state.assets));
+  } catch (err) {
+    console.error('Save assets failed:', err);
+  }
+}
+
+function loadAssets() {
+  try {
+    const saved = localStorage.getItem(ASSETS_KEY);
+    if (saved) {
+      state.assets = JSON.parse(saved);
+    }
+  } catch (err) {
+    console.error('Load assets failed:', err);
+  }
+}
+
+// Autosave every 5 seconds
+setInterval(autosave, 5000);
+
+// Save on page unload
+window.addEventListener('beforeunload', autosave);
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+function init() {
+  // Load saved data
+  loadAssets();
+  const loaded = loadAutosave();
+  
+  if (loaded) {
+    showToast('Previous work restored');
+  }
+  
+  // Initialize history
+  saveHistory();
+  
+  // Setup UI
+  updateSidebar('org');
+  updateInspector();
+  updateToolbar();
+  updateViewport();
+  
+  // Initial render
+  render();
+  
+  // Setup events
+  initEvents();
+  
+  // Setup grid button state
+  document.getElementById('btn-grid').classList.toggle('active', state.page.showGrid);
+  document.getElementById('btn-snap').classList.toggle('active', state.page.snap);
+  
+  console.log('Diagram Studio initialized');
+}
+
+// Start app
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
